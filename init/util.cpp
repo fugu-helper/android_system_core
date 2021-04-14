@@ -376,17 +376,77 @@ void panic() {
     DoReboot(ANDROID_RB_RESTART2, "reboot", "bootloader", false);
 }
 
+static void create_dt_file_by_cmdline(const std::string& key, const std::string& value, bool for_emulator, std::string rootdir) {
+    std::string file_path,file_content,error_ret;
+    if (key.empty()) return;
+
+//    if (for_emulator) {
+        // In the emulator
+//        return;
+//    }
+    if (android::base::StartsWith(key, "android.fw.")) {
+        file_path = android::base::StringPrintf("%s/%s", rootdir.c_str(), key.c_str() + 11);
+        std::replace(file_path.begin(), file_path.end(), '.', '/');
+        mkdir_recursive(android::base::Dirname(file_path).c_str(), 0700, NULL);
+        file_content = value + android::base::StringPrintf("\n");
+        WriteFile(file_path.c_str(), file_content.c_str(),&error_ret);
+    }
+}
+static std::string get_acpi_cfg_path_from_cmdline()
+{
+    std::string cmdline;
+    android::base::ReadFileToString("/proc/cmdline", &cmdline);
+
+    for (const auto& entry : android::base::Split(android::base::Trim(cmdline), " ")) {
+        std::vector<std::string> pieces = android::base::Split(entry, "=");
+        if ((pieces.size() == 2) && ("android.acpi.cfg.root" == pieces[0])) {
+               return pieces[1]; //find path of acpi cfg in kernel command line
+        }
+    }
+    return "/sys/devices/system/container/ACPI0004:00/firmware_node"; //return default path
+}
+static bool import_acpi_cmdline(bool in_qemu,
+                                          const std::function<void(const std::string&, const std::string&, bool, std::string)>& fn, std::string rootdir) {
+    std::string cmdline;
+    std::string acpi_cfg_path = get_acpi_cfg_path_from_cmdline();
+    LOG(INFO)<<"acpi cfg root:"<< acpi_cfg_path;
+    android::base::ReadFileToString(acpi_cfg_path+"/path",&cmdline);
+    std::size_t found = cmdline.find("CFG0");       //verify acpi device name
+    if (found == std::string::npos) return false;   //ACPI configuire file doesn't exist
+
+    android::base::ReadFileToString(acpi_cfg_path+"/description", &cmdline);
+    std::replace(cmdline.begin(), cmdline.end(), '\n', ' ');
+
+    for (const auto& entry : android::base::Split(android::base::Trim(cmdline), " ")) {
+        std::vector<std::string> pieces = android::base::Split(entry, "=");
+        if (pieces.size() == 2) {
+            fn(pieces[0], pieces[1], in_qemu,rootdir);
+        }
+    }
+    return true;
+}
+
+
+
 static std::string init_android_dt_dir() {
     // Use the standard procfs-based path by default
     std::string android_dt_dir = kDefaultAndroidDtDir;
-    // The platform may specify a custom Android DT path in kernel cmdline
-    import_kernel_cmdline(false,
-                          [&](const std::string& key, const std::string& value, bool in_qemu) {
-                              if (key == "androidboot.android_dt_dir") {
-                                  android_dt_dir = value;
-                              }
-                          });
-    LOG(INFO) << "Using Android DT directory " << android_dt_dir;
+    if(!is_dir(kDefaultAndroidDtDir.c_str())){  //if Device-Tree exist, ignore other configure.
+        // The platform may specify a custom Android DT path in kernel cmdline
+        import_kernel_cmdline(false,
+                              [&](const std::string& key, const std::string& value, bool in_qemu) {
+                                  if (key == "androidboot.android_dt_dir") {
+                                      android_dt_dir = value;
+                                  }
+                              });
+        if(android_dt_dir == kDefaultAndroidDtDir)  //kernel cmdline doesn't set, we use a default path for alternative device-tree.
+            android_dt_dir = "/dev/device-tree/firmware/android/";
+        LOG(INFO) << "Using Android DT directory " << android_dt_dir;
+        if(!is_dir(android_dt_dir.c_str())){
+            //to create the alternative device tree in ramdisk if Kernel doesn't do it.
+            import_acpi_cmdline(false, create_dt_file_by_cmdline,android_dt_dir);
+        }
+    }
     return android_dt_dir;
 }
 
@@ -401,7 +461,7 @@ const std::string& get_android_dt_dir() {
 // Returns true if the read is success, false otherwise.
 bool read_android_dt_file(const std::string& sub_path, std::string* dt_content) {
     const std::string file_name = get_android_dt_dir() + sub_path;
-    if (android::base::ReadFileToString(file_name, dt_content)) {
+    if (android::base::ReadFileToString(file_name, dt_content,true)) {
         if (!dt_content->empty()) {
             dt_content->pop_back();  // Trims the trailing '\0' out.
             return true;

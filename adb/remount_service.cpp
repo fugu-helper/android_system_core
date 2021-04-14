@@ -87,6 +87,9 @@ static bool remount_partition(int fd, const char* dir) {
         return true;
     }
     std::string dev = find_mount(dir);
+    if (strcmp(dir, "/") == 0) {
+       dev = "/dev/block/by-name/system" + android::base::GetProperty("ro.boot.slot_suffix","");
+    }
     if (dev.empty()) {
         return true;
     }

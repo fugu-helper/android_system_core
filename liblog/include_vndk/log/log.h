@@ -2,6 +2,14 @@
 
 #ifndef _LIBS_LOG_LOG_H
 #define _LIBS_LOG_LOG_H
+#if !defined(_WIN32)
+#include <pthread.h>
+#endif
+#include <stdint.h> /* uint16_t, int32_t */
+#include <stdio.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 
 #include <android/log.h>
 #include <log/log_id.h>

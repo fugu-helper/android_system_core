@@ -135,6 +135,11 @@ int ifc_init(void)
     return ret;
 }
 
+int ifc_is_init(void)
+{
+    return ifc_ctl_sock < 0 ? 0 : 1;
+}
+
 int ifc_init6(void)
 {
     pthread_mutex_lock(&ifc_sock6_mutex);

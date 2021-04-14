@@ -367,12 +367,26 @@ static int parse_flags(char *flags, struct flag_list *fl,
     return f;
 }
 
+static bool is_dt_in_kernel() {
+    std::string file_name = kDefaultAndroidDtDir + "/compatible";
+    std::string dt_value;
+    if (read_dt_file(file_name, &dt_value)) {
+        if (dt_value == "android,firmware") {
+            return true;
+        }
+    }
+    return false;
+}
+
 static std::string init_android_dt_dir() {
     std::string android_dt_dir;
-    // The platform may specify a custom Android DT path in kernel cmdline
-    if (!fs_mgr_get_boot_config_from_kernel_cmdline("android_dt_dir", &android_dt_dir)) {
-        // Fall back to the standard procfs-based path
+    if(is_dt_in_kernel()) { //if Device-Tree supported, ignore other configure.
         android_dt_dir = kDefaultAndroidDtDir;
+    }
+    // The platform may specify a custom Android DT path in kernel cmdline
+    else if (!fs_mgr_get_boot_config_from_kernel_cmdline("android_dt_dir", &android_dt_dir)) {
+        // use a default alternative path if kernel cmdline doesn't define it.
+        android_dt_dir = "/dev/device-tree/firmware/android";
     }
     return android_dt_dir;
 }

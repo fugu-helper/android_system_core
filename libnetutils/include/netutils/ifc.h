@@ -25,6 +25,7 @@ __BEGIN_DECLS
 extern int ifc_init(void);
 extern void ifc_close(void);
 
+extern int ifc_is_init(void);
 extern int ifc_get_ifindex(const char *name, int *if_indexp);
 extern int ifc_get_hwaddr(const char *name, void *ptr);
 
